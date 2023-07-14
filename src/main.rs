@@ -2,12 +2,16 @@
 
 mod arguments;
 
-use std::{fs::File, path::Path};
+use std::{
+    collections::HashMap,
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use arguments::Arguments;
 use clap::Parser;
 use eframe::{
-    egui::{vec2, CentralPanel, Context, Image},
+    egui::{vec2, CentralPanel, Context, Image, Ui},
     App, Frame,
 };
 use egui_extras::RetainedImage;
@@ -23,54 +27,87 @@ fn main() {
 }
 
 fn file_manager(arguments: &Arguments) -> Result<()> {
-    let images = load_images(&arguments.folder)?;
+    let image_paths = find_images(&arguments.folder)?;
 
     eframe::run_native(
         "JP File Manager",
         Default::default(),
-        Box::new(|_context| Box::new(FileManagerApp::new(images))),
+        Box::new(|_context| Box::new(FileManagerApp::new(image_paths))),
     )?;
 
     Ok(())
 }
 
-fn load_images(folder_path: impl AsRef<Path>) -> Result<Vec<RetainedImage>> {
-    use std::io::prelude::*;
-
+fn find_images(folder_path: impl AsRef<Path>) -> Result<Vec<(usize, PathBuf)>> {
     let mut images = Vec::new();
+    let mut index = 0;
 
     for file in WalkDir::new(folder_path).sort_by_file_name() {
         let file = file?;
         let Ok(format) = ImageFormat::from_path(file.path()) else { continue; };
-
         if format.can_read() {
-            println!("{:?}", file.file_name());
-            let mut bytes = Vec::new();
-            File::open(file.path())?.read_to_end(&mut bytes)?;
-
-            images.push(
-                RetainedImage::from_image_bytes(file.file_name().to_string_lossy(), &bytes)
-                    .map_err(Error::DisplayImage)?,
-            );
+            images.push((index, file.into_path()));
+            index += 1;
         }
     }
 
     Ok(images)
 }
 
+fn load_image(path: impl AsRef<Path>) -> Result<RetainedImage> {
+    use std::io::prelude::*;
+    let mut bytes = Vec::new();
+    File::open(&path)?.read_to_end(&mut bytes)?;
+
+    let debug_name = path
+        .as_ref()
+        .file_name()
+        .map_or("[Image]".into(), |name| name.to_string_lossy());
+
+    RetainedImage::from_image_bytes(debug_name, &bytes).map_err(Error::DisplayImage)
+}
+
 #[derive(Default)]
 struct FileManagerApp {
-    images: Vec<RetainedImage>,
+    image_paths: Vec<(usize, PathBuf)>,
     current_image: Option<usize>,
+    image_cache: HashMap<usize, RetainedImage>,
 }
 
 impl FileManagerApp {
-    fn new(images: Vec<RetainedImage>) -> Self {
-        let current_image = (images.len() > 0).then_some(0);
+    fn new(image_paths: Vec<(usize, PathBuf)>) -> Self {
+        let current_image = (!image_paths.is_empty()).then_some(0);
         Self {
-            images,
+            image_paths,
             current_image,
+            ..Default::default()
         }
+    }
+
+    fn add_image(&mut self, ctx: &Context, ui: &mut Ui) {
+        let Some(image_index) = self.current_image else {
+            return;
+        };
+        let (key, path) = &self.image_paths[image_index];
+
+        if !self.image_cache.contains_key(key) {
+            match load_image(path) {
+                Ok(image) => {
+                    self.image_cache.insert(*key, image);
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Encountered error while loading image {:?}: {}",
+                        path.file_name().unwrap_or_default(),
+                        error
+                    );
+                    return;
+                }
+            }
+        }
+
+        let image = &self.image_cache[key];
+        ui.add(Image::new(image.texture_id(ctx), vec2(200.0, 200.0)));
     }
 }
 
@@ -78,11 +115,7 @@ impl App for FileManagerApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
             ui.heading("Heading");
-
-            if let Some(image_index) = self.current_image {
-                let texture_id = self.images[image_index].texture_id(ctx);
-                ui.add(Image::new(texture_id, vec2(200.0, 200.0)));
-            }
+            self.add_image(ctx, ui);
         });
     }
 }
@@ -92,7 +125,7 @@ pub enum Error {
     #[error("could not process given folder: {0}")]
     FindingFiles(#[from] walkdir::Error),
 
-    #[error("could not load image file: {0}")]
+    #[error("could not read image file: {0}")]
     LoadImage(#[from] std::io::Error),
 
     #[error("could not decode image: {0}")]
