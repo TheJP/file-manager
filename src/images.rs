@@ -3,12 +3,14 @@ use crate::{Error, Result};
 use std::{
     collections::HashMap,
     fs::File,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
 };
 
 use crossbeam_channel::{bounded, Receiver};
 use egui_extras::RetainedImage;
 use image::ImageFormat;
+use lru::LruCache;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use walkdir::WalkDir;
 
@@ -28,7 +30,7 @@ pub(crate) fn find(folder_path: impl AsRef<Path>) -> Result<ImageCache> {
     Ok(ImageCache {
         paths,
         current_image: (index > 0).then_some(0),
-        values: Default::default(),
+        values: LruCache::new(NonZeroUsize::new(ImageCache::SIZE).unwrap()),
         pool: ThreadPoolBuilder::new().build()?,
         processing: Default::default(),
     })
@@ -50,7 +52,7 @@ fn load_image(path: impl AsRef<Path>) -> Result<RetainedImage> {
 pub(crate) struct ImageCache {
     paths: Vec<(usize, PathBuf)>,
     current_image: Option<isize>,
-    values: HashMap<usize, RetainedImage>,
+    values: LruCache<usize, RetainedImage>,
     pool: ThreadPool,
 
     /// Contains connections to all images that are currently being loaded.
@@ -58,6 +60,7 @@ pub(crate) struct ImageCache {
 }
 
 impl ImageCache {
+    const SIZE: usize = 100;
     const PRELOAD_BEFORE: isize = 3;
     const PRELOAD_AFTER: isize = 10;
 
@@ -83,22 +86,21 @@ impl ImageCache {
         let (key, path) = &self.paths[index as usize];
         let key = *key;
 
-        #[allow(clippy::map_entry)]
-        if !self.values.contains_key(&key) {
+        if self.values.get(&key).is_none() {
             if !self.processing.contains_key(&key) {
                 self.start_loading_image(key, path.clone());
             }
             let image = self.processing[&key]
                 .recv()
                 .expect("channel empty or disconnected")?;
-            self.values.insert(key, image);
+            self.values.put(key, image);
             self.processing.remove(&key);
         }
 
         // Start preloading after retrieving requested image to make loading the requested image a priority.
         self.preload(index);
 
-        Ok(Some(&self.values[&key]))
+        Ok(self.values.get(&key))
     }
 
     fn preload(&mut self, around: isize) {
@@ -108,7 +110,7 @@ impl ImageCache {
             };
             let (key, path) = &self.paths[index as usize];
 
-            if !self.values.contains_key(key) && !self.processing.contains_key(key) {
+            if self.values.get(key).is_none() && !self.processing.contains_key(key) {
                 self.start_loading_image(*key, path.clone());
             }
         }
