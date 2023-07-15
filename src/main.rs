@@ -14,7 +14,7 @@ use eframe::{
     egui::{vec2, CentralPanel, Context, Image, Ui},
     App, Frame,
 };
-use egui_extras::RetainedImage;
+use egui_extras::{RetainedImage, Size, StripBuilder};
 use image::ImageFormat;
 use thiserror::Error;
 use walkdir::WalkDir;
@@ -107,15 +107,30 @@ impl FileManagerApp {
         }
 
         let image = &self.image_cache[key];
-        ui.add(Image::new(image.texture_id(ctx), vec2(200.0, 200.0)));
+
+        let size = ui.available_size_before_wrap().max(vec2(100.0, 100.0));
+        let aspect_x = size.y * (image.width() as f32) / (image.height() as f32);
+        let fit = (aspect_x <= size.x)
+            .then_some(vec2(aspect_x, size.y))
+            .unwrap_or_else(|| {
+                vec2(
+                    size.x,
+                    size.x * (image.height() as f32) / (image.width() as f32),
+                )
+            });
+
+        ui.vertical_centered(|ui| ui.add(Image::new(image.texture_id(ctx), fit)));
     }
 }
 
 impl App for FileManagerApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Heading");
-            self.add_image(ctx, ui);
+            StripBuilder::new(ui)
+                .size(Size::remainder())
+                .vertical(|mut strip| {
+                    strip.cell(|ui| self.add_image(ctx, ui));
+                });
         });
     }
 }
