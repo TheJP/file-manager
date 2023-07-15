@@ -12,3 +12,5 @@ egui_extras = { version = "0.22.0", features = ["image"] }
 image = "~0.24"
 walkdir = "~2.3"
 thiserror = "~1.0"
+rayon = "~1.7"
+crossbeam-channel = "~0.5"

@@ -7,7 +7,6 @@ use eframe::{
 };
 use egui_extras::{Size, StripBuilder};
 
-#[derive(Default)]
 pub(crate) struct FileManagerApp {
     images: ImageCache,
 }

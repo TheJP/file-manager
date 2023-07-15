@@ -7,6 +7,7 @@ mod images;
 use arguments::Arguments;
 use clap::Parser;
 
+use rayon::ThreadPoolBuildError;
 use thiserror::Error;
 
 fn main() {
@@ -42,5 +43,11 @@ pub enum Error {
 
     #[error("UI: {0}")]
     UIError(#[from] eframe::Error),
+
+    #[error("could not create thread pool: {0}")]
+    RayonError(#[from] ThreadPoolBuildError),
+
+    #[error("{0}")]
+    ChannelError(#[from] images::ChannelError),
 }
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1039,9 +1039,11 @@ name = "file-manager"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "crossbeam-channel",
  "eframe",
  "egui_extras",
  "image",
+ "rayon",
  "thiserror",
  "walkdir",
 ]

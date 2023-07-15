@@ -6,8 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crossbeam_channel::{bounded, Receiver};
 use egui_extras::RetainedImage;
 use image::ImageFormat;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use walkdir::WalkDir;
 
 pub(crate) fn find(folder_path: impl AsRef<Path>) -> Result<ImageCache> {
@@ -26,7 +28,9 @@ pub(crate) fn find(folder_path: impl AsRef<Path>) -> Result<ImageCache> {
     Ok(ImageCache {
         paths,
         current_image: (index > 0).then_some(0),
-        ..Default::default()
+        values: Default::default(),
+        pool: ThreadPoolBuilder::new().build()?,
+        processing: Default::default(),
     })
 }
 
@@ -43,14 +47,20 @@ fn load_image(path: impl AsRef<Path>) -> Result<RetainedImage> {
     RetainedImage::from_image_bytes(debug_name, &bytes).map_err(Error::DisplayImage)
 }
 
-#[derive(Default)]
 pub(crate) struct ImageCache {
     paths: Vec<(usize, PathBuf)>,
     current_image: Option<isize>,
     values: HashMap<usize, RetainedImage>,
+    pool: ThreadPool,
+
+    /// Contains connections to all images that are currently being loaded.
+    processing: HashMap<usize, Receiver<std::result::Result<RetainedImage, ChannelError>>>,
 }
 
 impl ImageCache {
+    const PRELOAD_BEFORE: isize = 3;
+    const PRELOAD_AFTER: isize = 10;
+
     pub(crate) fn forward(&mut self) {
         self.move_by(1);
     }
@@ -69,13 +79,53 @@ impl ImageCache {
         let Some(index) = self.current_image else {
             return Ok(None);
         };
-        let (key, path) = &self.paths[index as usize];
 
-        if !self.values.contains_key(key) {
-            let image = load_image(path)?;
-            self.values.insert(*key, image);
+        let (key, path) = &self.paths[index as usize];
+        let key = *key;
+
+        #[allow(clippy::map_entry)]
+        if !self.values.contains_key(&key) {
+            if !self.processing.contains_key(&key) {
+                self.start_loading_image(key, path.clone());
+            }
+            let image = self.processing[&key]
+                .recv()
+                .expect("channel empty or disconnected")?;
+            self.values.insert(key, image);
+            self.processing.remove(&key);
         }
 
-        Ok(Some(&self.values[key]))
+        // Start preloading after retrieving requested image to make loading the requested image a priority.
+        self.preload(index);
+
+        Ok(Some(&self.values[&key]))
+    }
+
+    fn preload(&mut self, around: isize) {
+        for index in (around - Self::PRELOAD_BEFORE)..(around + Self::PRELOAD_AFTER) {
+            let Some(index) = index.checked_rem_euclid(self.paths.len() as isize) else {
+                continue;
+            };
+            let (key, path) = &self.paths[index as usize];
+
+            if !self.values.contains_key(key) && !self.processing.contains_key(key) {
+                self.start_loading_image(*key, path.clone());
+            }
+        }
+    }
+
+    fn start_loading_image(&mut self, key: usize, path: PathBuf) {
+        let (sender, receiver) = bounded(1);
+        self.processing.insert(key, receiver);
+
+        self.pool.spawn(move || {
+            let image = load_image(path);
+            let image = image.map_err(|error| ChannelError(format!("{error}"))); // `std::error:Error` does not implement `Send`.
+            sender.send(image).expect("channel disconnected");
+        });
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("{0}")]
+pub struct ChannelError(String);
