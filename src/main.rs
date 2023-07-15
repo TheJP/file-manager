@@ -11,7 +11,7 @@ use std::{
 use arguments::Arguments;
 use clap::Parser;
 use eframe::{
-    egui::{vec2, CentralPanel, Context, Image, Ui},
+    egui::{vec2, CentralPanel, Context, Image, Key, Ui},
     App, Frame,
 };
 use egui_extras::{RetainedImage, Size, StripBuilder};
@@ -121,10 +121,34 @@ impl FileManagerApp {
 
         ui.vertical_centered(|ui| ui.add(Image::new(image.texture_id(ctx), fit)));
     }
+
+    fn navigate_images(&mut self, ctx: &Context) {
+        let Some(change) = &mut self.current_image else {
+            return;
+        };
+
+        if ctx.input(|input| input.key_pressed(Key::ArrowRight) || input.key_pressed(Key::PageDown))
+        {
+            *change = if *change + 1 >= self.image_paths.len() {
+                0
+            } else {
+                *change + 1
+            };
+        }
+        if ctx.input(|input| input.key_pressed(Key::ArrowLeft) || input.key_pressed(Key::PageUp)) {
+            *change = if *change > 0 {
+                *change - 1
+            } else {
+                self.image_paths.len() - 1
+            };
+        }
+    }
 }
 
 impl App for FileManagerApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        self.navigate_images(ctx);
+
         CentralPanel::default().show(ctx, |ui| {
             StripBuilder::new(ui)
                 .size(Size::remainder())
