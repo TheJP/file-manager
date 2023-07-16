@@ -1,0 +1,16 @@
+[package]
+name = "file-manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+approximate-string-matcher = { path = "../approximate-string-matcher" }
+clap = { version = "4.3.12", features = ["derive"] }
+eframe = "0.22.0"
+egui_extras = { version = "0.22.0", features = ["image"] }
+image = "~0.24"
+walkdir = "~2.3"
+thiserror = "~1.0"
+rayon = "~1.7"
+crossbeam-channel = "~0.5"
+lru = "0.11.0"
