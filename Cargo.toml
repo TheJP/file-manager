@@ -2,4 +2,5 @@
 
 members = [
     "file-manager",
+    "approximate-string-matcher",
 ]
