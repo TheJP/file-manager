@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
-    "file-manager",
     "approximate-string-matcher",
+    "file-manager",
+    "meta",
 ]
