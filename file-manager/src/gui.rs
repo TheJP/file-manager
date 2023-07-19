@@ -1,20 +1,21 @@
 use crate::images::ImageCache;
 
 use approximate_string_matcher::{compare, MatchResult};
-use eframe::egui::{RichText, TextEdit, Window};
-use eframe::epaint::Color32;
+use eframe::egui::{Layout, RichText, TextEdit, Window};
+use eframe::epaint::{Color32, Pos2, Rect, Vec2};
 use eframe::Frame;
 use eframe::{
     egui::{vec2, CentralPanel, Context, Image, Key, Ui},
     App,
 };
-use egui_extras::{Size, StripBuilder};
+use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 
 pub(crate) struct FileManagerApp {
     images: ImageCache,
     meta_window_open: bool,
     meta_search: String,
     meta_options: Vec<MetaOption>,
+    meta_selected_option: isize,
     persons: Vec<String>,
 }
 
@@ -35,8 +36,9 @@ impl FileManagerApp {
             images,
             meta_window_open: false,
             meta_search: String::new(),
-            persons: vec!["Janis".into(), "Jaguar Nano".into()],
             meta_options: vec![MetaOption::Create],
+            meta_selected_option: 0,
+            persons: vec!["Janis".into(), "Jaguar Nano".into()],
         }
     }
 
@@ -83,48 +85,91 @@ impl FileManagerApp {
     }
 
     fn meta_window(&mut self, ctx: &Context) {
+        let escape = ctx.input(|input| input.key_pressed(Key::Escape));
+        let enter = ctx.input(|input| input.key_pressed(Key::Enter));
+        if escape || enter {
+            self.meta_window_open = false;
+            // TODO: Handle enter
+            return;
+        }
+
+        if ctx.input(|input| input.key_pressed(Key::ArrowUp)) {
+            self.meta_selected_option -= 1;
+        }
+        if ctx.input(|input| input.key_pressed(Key::ArrowDown)) {
+            self.meta_selected_option += 1;
+        }
+        self.meta_selected_option = self
+            .meta_selected_option
+            .rem_euclid(self.meta_options.len() as isize);
+
         Window::new("People")
             .id(eframe::egui::Id::new("meta_window"))
             .collapsible(false)
             .show(ctx, |ui| {
-                let response =
-                    ui.add(TextEdit::singleline(&mut self.meta_search).hint_text("Search"));
-                response.request_focus();
-                if response.changed() {
-                    let search = self.meta_search.trim();
-                    self.meta_options = std::iter::once(MetaOption::Create)
-                        .chain(
-                            self.persons
-                                .iter()
-                                .filter_map(|name| compare(search, name))
-                                .map(Into::into),
-                        )
-                        .collect();
-                }
-
-                for options in &self.meta_options {
-                    match options {
-                        MetaOption::Create => {
-                            ui.label("Create New");
-                        }
-                        MetaOption::MatchResult(match_result) => {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                let mut matches = match_result.matches();
-                                for (index, letter) in match_result.target().chars().enumerate() {
-                                    let mut letter = RichText::new(letter);
-                                    while !matches.is_empty() && matches[0] < index {
-                                        matches = &matches[1..];
-                                    }
-                                    if !matches.is_empty() && matches[0] == index {
-                                        letter = letter.color(Color32::GREEN);
-                                    }
-                                    ui.label(letter);
+                TableBuilder::new(ui)
+                    .striped(true)
+                    .resizable(false)
+                    .cell_layout(Layout::left_to_right(eframe::emath::Align::Center))
+                    .column(Column::remainder().at_least(100.0))
+                    .header(25.0, |mut header| {
+                        header.col(|ui| {
+                            let response = ui.add(
+                                TextEdit::singleline(&mut self.meta_search).hint_text("Search"),
+                            );
+                            response.request_focus();
+                            if response.changed() {
+                                let search = self.meta_search.trim();
+                                self.meta_selected_option = 0;
+                                self.meta_options = std::iter::once(MetaOption::Create)
+                                    .chain(
+                                        self.persons
+                                            .iter()
+                                            .filter_map(|name| compare(search, name))
+                                            .map(Into::into),
+                                    )
+                                    .collect();
+                            }
+                        });
+                    })
+                    .body(|body| {
+                        body.rows(25.0, self.meta_options.len(), |option_index, mut row| {
+                            let option = &self.meta_options[option_index];
+                            row.col(|ui| {
+                                if self.meta_selected_option as usize == option_index {
+                                    ui.painter().rect_filled(
+                                        ui.max_rect(),
+                                        0.0,
+                                        Color32::from_rgb(60, 60, 60),
+                                    );
                                 }
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 0.0;
+
+                                    match option {
+                                        MetaOption::Create => {
+                                            ui.label("Create New");
+                                        }
+                                        MetaOption::MatchResult(match_result) => {
+                                            let mut matches = match_result.matches();
+                                            for (index, letter) in
+                                                match_result.target().chars().enumerate()
+                                            {
+                                                let mut letter = RichText::new(letter);
+                                                while !matches.is_empty() && matches[0] < index {
+                                                    matches = &matches[1..];
+                                                }
+                                                if !matches.is_empty() && matches[0] == index {
+                                                    letter = letter.color(Color32::GREEN);
+                                                }
+                                                ui.label(letter);
+                                            }
+                                        }
+                                    }
+                                });
                             });
-                        }
-                    }
-                }
+                        })
+                    });
             });
     }
 }
@@ -137,14 +182,7 @@ impl App for FileManagerApp {
         }
 
         if self.meta_window_open {
-            let escape = ctx.input(|input| input.key_pressed(Key::Escape));
-            let enter = ctx.input(|input| input.key_pressed(Key::Enter));
-            if escape || enter {
-                self.meta_window_open = false
-                // TODO: Handle enter
-            } else {
-                self.meta_window(ctx);
-            }
+            self.meta_window(ctx);
         }
 
         CentralPanel::default().show(ctx, |ui| {
