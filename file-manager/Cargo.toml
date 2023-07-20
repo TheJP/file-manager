@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+meta = { path = "../meta" }
 approximate-string-matcher = { path = "../approximate-string-matcher" }
 clap = { version = "4.3.12", features = ["derive"] }
 eframe = "0.22.0"

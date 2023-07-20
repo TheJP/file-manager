@@ -78,6 +78,11 @@ impl ImageCache {
             .and_then(|index| (index + step).checked_rem_euclid(self.paths.len() as isize));
     }
 
+    pub(crate) fn current_image_path(&mut self) -> Option<&PathBuf> {
+        self.current_image
+            .map(|index| &self.paths[index as usize].1)
+    }
+
     pub(crate) fn current_image(&mut self) -> Result<Option<&RetainedImage>> {
         let Some(index) = self.current_image else {
             return Ok(None);

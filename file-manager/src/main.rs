@@ -20,8 +20,10 @@ fn main() {
 
 fn file_manager(arguments: &Arguments) -> Result<()> {
     let images = images::find(&arguments.folder)?;
+    let mut meta = meta::Repository::load_or_create(".meta/".into())?;
+    let meta_current_folder = meta.root_folders_mut().get_or_create(&arguments.folder)?;
 
-    let app = Box::new(gui::FileManagerApp::new(images));
+    let app = Box::new(gui::FileManagerApp::new(images, meta, meta_current_folder));
     eframe::run_native(
         "JP File Manager",
         Default::default(),
@@ -60,5 +62,8 @@ pub enum Error {
 
     #[error("{0}")]
     ChannelError(#[from] images::ChannelError),
+
+    #[error("problem accessing meta data: {0}")]
+    MetaError(#[from] meta::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,6 +1,7 @@
+use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
-use crate::images::ImageCache;
+use crate::{images::ImageCache, Result};
 
 use approximate_string_matcher::{compare, MatchResult};
 use eframe::egui::{Layout, RichText, TextEdit, Window};
@@ -11,36 +12,44 @@ use eframe::{
     App,
 };
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
+use meta::model::{PersonId, RootFolderId};
+use meta::Repository;
 
 pub(crate) struct FileManagerApp {
     images: ImageCache,
+    meta: Repository,
+    meta_current_folder: RootFolderId,
     meta_window_open: bool,
     meta_search: String,
     meta_options: Vec<MetaOption>,
     meta_selected_option: isize,
-    persons: Vec<String>,
 }
 
 pub(crate) enum MetaOption {
     Create,
-    MatchResult(MatchResult),
+    MatchResult(MatchResult, usize),
 }
 
-impl From<MatchResult> for MetaOption {
-    fn from(value: MatchResult) -> Self {
-        MetaOption::MatchResult(value)
-    }
-}
+// impl From<MatchResult> for MetaOption {
+//     fn from(value: MatchResult) -> Self {
+//         MetaOption::MatchResult(value)
+//     }
+// }
 
 impl FileManagerApp {
-    pub(crate) fn new(images: ImageCache) -> Self {
+    pub(crate) fn new(
+        images: ImageCache,
+        meta: Repository,
+        meta_current_folder: RootFolderId,
+    ) -> Self {
         Self {
             images,
+            meta,
+            meta_current_folder,
             meta_window_open: false,
             meta_search: String::new(),
             meta_options: vec![MetaOption::Create],
             meta_selected_option: 0,
-            persons: vec!["Janis".into(), "Jaguar Nano".into()],
         }
     }
 
@@ -135,12 +144,26 @@ impl FileManagerApp {
         self.meta_selected_option = 0;
         self.meta_options = std::iter::once(MetaOption::Create)
             .chain(
-                self.persons
+                self.meta
+                    .persons()
+                    .entries()
                     .iter()
-                    .filter_map(|name| compare(search, name))
-                    .map(Into::into),
+                    .filter_map(|(id, person)| {
+                        compare(search, &person.name)
+                            .map(|result| MetaOption::MatchResult(result, id.0))
+                    })
+                    .take(10),
             )
             .collect();
+
+        self.meta_options.sort_by(|a, b| match (a, b) {
+            (MetaOption::Create, MetaOption::Create) => Ordering::Equal,
+            (MetaOption::Create, _) => Ordering::Less,
+            (_, MetaOption::Create) => Ordering::Greater,
+            (MetaOption::MatchResult(a, _), MetaOption::MatchResult(b, _)) => {
+                b.score().cmp(&a.score())
+            }
+        })
     }
 
     fn meta_window_handle_input(&mut self, ctx: &Context) -> ControlFlow<()> {
@@ -148,7 +171,9 @@ impl FileManagerApp {
         let enter = ctx.input(|input| input.key_pressed(Key::Enter));
         if escape || enter {
             self.meta_window_open = false;
-            // TODO: Handle enter
+            if enter {
+                self.meta_handle_confirm().unwrap(); // TODO: Improve error handling.
+            }
             return ControlFlow::Break(());
         }
 
@@ -165,6 +190,25 @@ impl FileManagerApp {
         ControlFlow::Continue(())
     }
 
+    fn meta_handle_confirm(&mut self) -> Result<()> {
+        self.meta_window_open = false;
+        let option = &self.meta_options[self.meta_selected_option as usize];
+        match option {
+            MetaOption::Create => todo!(),
+            MetaOption::MatchResult(_, id) => {
+                let Some(image_path) = self.images.current_image_path() else {
+                    return Ok(());
+                };
+                self.meta
+                    .load_or_create_file(&self.meta_current_folder, image_path)?
+                    .persons
+                    .insert(PersonId(*id));
+            }
+        }
+
+        Ok(())
+    }
+
     fn add_meta_option(ui: &mut Ui, option: &MetaOption) {
         let _ = ui.button("+");
         ui.horizontal_centered(|ui| {
@@ -174,7 +218,7 @@ impl FileManagerApp {
                 MetaOption::Create => {
                     ui.label("Create New");
                 }
-                MetaOption::MatchResult(match_result) => {
+                MetaOption::MatchResult(match_result, _) => {
                     Self::add_meta_option_match_result(match_result, ui);
                 }
             }
@@ -214,5 +258,15 @@ impl App for FileManagerApp {
                     strip.cell(|ui| self.add_image(ctx, ui));
                 });
         });
+    }
+
+    fn on_close_event(&mut self) -> bool {
+        let result = self.meta.save();
+        if let Err(error) = result {
+            eprintln!("Encountered error when saving meta data: {}", error);
+            false
+        } else {
+            true
+        }
     }
 }

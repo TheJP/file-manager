@@ -2,33 +2,30 @@ use crate::Result;
 
 use std::{
     collections::{HashMap, HashSet},
-    ffi::OsString,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default, Copy, Clone)]
-pub struct PersonId(usize);
+pub struct PersonId(pub usize);
 
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Person {
-    pub(crate) id: PersonId,
     pub name: String,
     pub pronouns: Option<String>,
     pub comment: Option<String>,
 
+    #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub tags: HashMap<String, Vec<String>>,
 }
 
-#[serde_as]
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PersonCollection {
     pub(crate) next_id: PersonId,
-    #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) persons: HashMap<PersonId, Person>,
 
     /// This contains tags that have been previously used for a [Person].
@@ -49,12 +46,14 @@ pub struct RootFolderCollection {
     pub file_tags: HashSet<String>,
 }
 
+#[serde_as]
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Folder {
     pub(crate) path: PathBuf,
     pub(crate) root_folder: RootFolderId,
-    pub(crate) files: HashMap<OsString, MetaFile>,
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub(crate) files: HashMap<PathBuf, MetaFile>,
 }
 
 #[skip_serializing_none]
@@ -62,9 +61,11 @@ pub(crate) struct Folder {
 pub struct MetaFile {
     pub hash: Option<String>,
 
+    #[serde(default)]
     #[serde(skip_serializing_if = "HashSet::is_empty")]
-    pub persons: HashSet<usize>,
+    pub persons: HashSet<PersonId>,
 
+    #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub tags: HashMap<String, Vec<String>>,
 }
@@ -74,9 +75,8 @@ impl PersonCollection {
         &self.persons
     }
 
-    pub fn add(&mut self, mut person: Person) -> PersonId {
+    pub fn add(&mut self, person: Person) -> PersonId {
         let id = self.next_id;
-        person.id = id;
         self.persons.insert(id, person);
         self.next_id.0 += 1;
         id
@@ -98,7 +98,6 @@ impl PersonCollection {
 impl Person {
     pub fn new(name: String, pronouns: Option<String>) -> Self {
         Self {
-            id: PersonId(usize::MAX),
             name,
             pronouns,
             comment: None,
@@ -112,12 +111,19 @@ impl RootFolderCollection {
         &self.root_folders
     }
 
-    pub fn add(&mut self, root_folder: PathBuf) -> Result<RootFolderId> {
-        let root_folder = root_folder.canonicalize()?;
-        let id = self.next_id;
-        self.root_folders.insert(id, root_folder);
-        self.next_id.0 += 1;
-        Ok(id)
+    pub fn get_or_create(&mut self, path: impl AsRef<Path>) -> Result<RootFolderId> {
+        let path = path.as_ref().canonicalize()?;
+        let root_folder = self
+            .root_folders
+            .iter()
+            .find_map(|(&id, root_folder)| path.starts_with(root_folder).then_some(id));
+
+        Ok(root_folder.unwrap_or_else(|| {
+            let id = self.next_id;
+            self.root_folders.insert(id, path);
+            self.next_id.0 += 1;
+            id
+        }))
     }
 
     pub fn remove(&mut self, id: &RootFolderId) -> Option<PathBuf> {

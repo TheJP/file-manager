@@ -2,3 +2,6 @@
 */target
 
 .vscode
+
+# Metadata Folder in the Testing Environment
+.meta

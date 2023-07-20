@@ -1124,6 +1124,7 @@ dependencies = [
  "egui_extras",
  "image",
  "lru",
+ "meta",
  "rayon",
  "thiserror",
  "walkdir",

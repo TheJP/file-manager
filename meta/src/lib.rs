@@ -130,11 +130,14 @@ impl Repository {
             .file_name()
             .ok_or(Error::InvalidFilePath)?
             .to_os_string();
-        Ok(folder.files.entry(file_name).or_insert_with(|| MetaFile {
-            hash: None,
-            persons: HashSet::with_capacity(0),
-            tags: HashMap::with_capacity(0),
-        }))
+        Ok(folder
+            .files
+            .entry(file_name.into())
+            .or_insert_with(|| MetaFile {
+                hash: None,
+                persons: HashSet::with_capacity(0),
+                tags: HashMap::with_capacity(0),
+            }))
     }
 
     fn load_or_create_folder<'a>(
