@@ -7,6 +7,7 @@ mod images;
 use arguments::Arguments;
 use clap::Parser;
 
+use eframe::egui::Style;
 use rayon::ThreadPoolBuildError;
 use thiserror::Error;
 
@@ -24,10 +25,20 @@ fn file_manager(arguments: &Arguments) -> Result<()> {
     eframe::run_native(
         "JP File Manager",
         Default::default(),
-        Box::new(|_context| app),
+        Box::new(|creation_context| {
+            apply_style(creation_context);
+            app
+        }),
     )?;
 
     Ok(())
+}
+
+fn apply_style(creation_context: &eframe::CreationContext<'_>) {
+    let ctx = &creation_context.egui_ctx;
+    let mut style = Style::clone(&ctx.style());
+    style.visuals.window_shadow.extrusion = 0.0;
+    ctx.set_style(style);
 }
 
 #[derive(Error, Debug)]

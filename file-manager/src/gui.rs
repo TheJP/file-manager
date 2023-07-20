@@ -1,8 +1,10 @@
+use std::ops::ControlFlow;
+
 use crate::images::ImageCache;
 
 use approximate_string_matcher::{compare, MatchResult};
 use eframe::egui::{Layout, RichText, TextEdit, Window};
-use eframe::epaint::{Color32, Pos2, Rect, Vec2};
+use eframe::epaint::Color32;
 use eframe::Frame;
 use eframe::{
     egui::{vec2, CentralPanel, Context, Image, Key, Ui},
@@ -79,29 +81,16 @@ impl FileManagerApp {
     fn meta_hotkeys(&mut self, ctx: &Context) {
         if ctx.input(|input| input.key_pressed(Key::Num1)) {
             self.meta_search = String::new();
+            // TODO: Populate with commonly used options.
             self.meta_options = vec![MetaOption::Create];
             self.meta_window_open = true;
         }
     }
 
     fn meta_window(&mut self, ctx: &Context) {
-        let escape = ctx.input(|input| input.key_pressed(Key::Escape));
-        let enter = ctx.input(|input| input.key_pressed(Key::Enter));
-        if escape || enter {
-            self.meta_window_open = false;
-            // TODO: Handle enter
+        if let ControlFlow::Break(_) = self.meta_window_handle_input(ctx) {
             return;
         }
-
-        if ctx.input(|input| input.key_pressed(Key::ArrowUp)) {
-            self.meta_selected_option -= 1;
-        }
-        if ctx.input(|input| input.key_pressed(Key::ArrowDown)) {
-            self.meta_selected_option += 1;
-        }
-        self.meta_selected_option = self
-            .meta_selected_option
-            .rem_euclid(self.meta_options.len() as isize);
 
         Window::new("People")
             .id(eframe::egui::Id::new("meta_window"))
@@ -138,39 +127,67 @@ impl FileManagerApp {
                             row.col(|ui| {
                                 if self.meta_selected_option as usize == option_index {
                                     ui.painter().rect_filled(
-                                        ui.max_rect(),
+                                        ui.max_rect().expand2(0.5 * ui.spacing().item_spacing),
                                         0.0,
                                         Color32::from_rgb(60, 60, 60),
                                     );
                                 }
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 0.0;
-
-                                    match option {
-                                        MetaOption::Create => {
-                                            ui.label("Create New");
-                                        }
-                                        MetaOption::MatchResult(match_result) => {
-                                            let mut matches = match_result.matches();
-                                            for (index, letter) in
-                                                match_result.target().chars().enumerate()
-                                            {
-                                                let mut letter = RichText::new(letter);
-                                                while !matches.is_empty() && matches[0] < index {
-                                                    matches = &matches[1..];
-                                                }
-                                                if !matches.is_empty() && matches[0] == index {
-                                                    letter = letter.color(Color32::GREEN);
-                                                }
-                                                ui.label(letter);
-                                            }
-                                        }
-                                    }
-                                });
+                                Self::add_meta_option(ui, option);
                             });
                         })
                     });
             });
+    }
+
+    fn meta_window_handle_input(&mut self, ctx: &Context) -> ControlFlow<()> {
+        let escape = ctx.input(|input| input.key_pressed(Key::Escape));
+        let enter = ctx.input(|input| input.key_pressed(Key::Enter));
+        if escape || enter {
+            self.meta_window_open = false;
+            // TODO: Handle enter
+            return ControlFlow::Break(());
+        }
+
+        if ctx.input(|input| input.key_pressed(Key::ArrowUp)) {
+            self.meta_selected_option -= 1;
+        }
+        if ctx.input(|input| input.key_pressed(Key::ArrowDown)) {
+            self.meta_selected_option += 1;
+        }
+        self.meta_selected_option = self
+            .meta_selected_option
+            .rem_euclid(self.meta_options.len() as isize);
+
+        ControlFlow::Continue(())
+    }
+
+    fn add_meta_option(ui: &mut Ui, option: &MetaOption) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+
+            match option {
+                MetaOption::Create => {
+                    ui.label("Create New");
+                }
+                MetaOption::MatchResult(match_result) => {
+                    Self::add_meta_option_match_result(match_result, ui);
+                }
+            }
+        });
+    }
+
+    fn add_meta_option_match_result(match_result: &MatchResult, ui: &mut Ui) {
+        let mut matches = match_result.matches();
+        for (index, letter) in match_result.target().chars().enumerate() {
+            let mut letter = RichText::new(letter);
+            while !matches.is_empty() && matches[0] < index {
+                matches = &matches[1..];
+            }
+            if !matches.is_empty() && matches[0] == index {
+                letter = letter.color(Color32::GREEN);
+            }
+            ui.label(letter);
+        }
     }
 }
 
