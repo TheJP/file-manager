@@ -108,16 +108,7 @@ impl FileManagerApp {
                             );
                             response.request_focus();
                             if response.changed() {
-                                let search = self.meta_search.trim();
-                                self.meta_selected_option = 0;
-                                self.meta_options = std::iter::once(MetaOption::Create)
-                                    .chain(
-                                        self.persons
-                                            .iter()
-                                            .filter_map(|name| compare(search, name))
-                                            .map(Into::into),
-                                    )
-                                    .collect();
+                                self.update_meta_options();
                             }
                         });
                     })
@@ -137,6 +128,19 @@ impl FileManagerApp {
                         })
                     });
             });
+    }
+
+    fn update_meta_options(&mut self) {
+        let search = self.meta_search.trim();
+        self.meta_selected_option = 0;
+        self.meta_options = std::iter::once(MetaOption::Create)
+            .chain(
+                self.persons
+                    .iter()
+                    .filter_map(|name| compare(search, name))
+                    .map(Into::into),
+            )
+            .collect();
     }
 
     fn meta_window_handle_input(&mut self, ctx: &Context) -> ControlFlow<()> {
@@ -162,7 +166,8 @@ impl FileManagerApp {
     }
 
     fn add_meta_option(ui: &mut Ui, option: &MetaOption) {
-        ui.horizontal_wrapped(|ui| {
+        let _ = ui.button("+");
+        ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
 
             match option {
