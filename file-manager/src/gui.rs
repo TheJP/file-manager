@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use crate::{images::ImageCache, Result};
 
 use approximate_string_matcher::{compare, MatchResult};
-use eframe::egui::{Layout, RichText, TextEdit, Window};
+use eframe::egui::{Layout, RichText, TextEdit, TopBottomPanel, Window};
 use eframe::epaint::Color32;
 use eframe::Frame;
 use eframe::{
@@ -89,11 +89,15 @@ impl FileManagerApp {
 
     fn meta_hotkeys(&mut self, ctx: &Context) {
         if ctx.input(|input| input.key_pressed(Key::Num1)) {
-            self.meta_search = String::new();
-            // TODO: Populate with commonly used options.
-            self.meta_options = vec![MetaOption::Create];
-            self.meta_window_open = true;
+            self.open_meta_window();
         }
+    }
+
+    fn open_meta_window(&mut self) {
+        self.meta_search = String::new();
+        // TODO: Populate with commonly used options.
+        self.meta_options = vec![MetaOption::Create];
+        self.meta_window_open = true;
     }
 
     fn meta_window(&mut self, ctx: &Context) {
@@ -123,7 +127,6 @@ impl FileManagerApp {
                     })
                     .body(|body| {
                         body.rows(25.0, self.meta_options.len(), |option_index, mut row| {
-                            let option = &self.meta_options[option_index];
                             row.col(|ui| {
                                 if self.meta_selected_option as usize == option_index {
                                     ui.painter().rect_filled(
@@ -132,7 +135,7 @@ impl FileManagerApp {
                                         Color32::from_rgb(60, 60, 60),
                                     );
                                 }
-                                Self::add_meta_option(ui, option);
+                                self.add_meta_option(ui, option_index);
                             });
                         })
                     });
@@ -172,7 +175,8 @@ impl FileManagerApp {
         if escape || enter {
             self.meta_window_open = false;
             if enter {
-                self.meta_handle_confirm().unwrap(); // TODO: Improve error handling.
+                self.meta_handle_confirm(self.meta_selected_option as usize)
+                    .unwrap(); // TODO: Improve error handling.
             }
             return ControlFlow::Break(());
         }
@@ -190,9 +194,9 @@ impl FileManagerApp {
         ControlFlow::Continue(())
     }
 
-    fn meta_handle_confirm(&mut self) -> Result<()> {
+    fn meta_handle_confirm(&mut self, option_index: usize) -> Result<()> {
         self.meta_window_open = false;
-        let option = &self.meta_options[self.meta_selected_option as usize];
+        let option = &self.meta_options[option_index];
         match option {
             MetaOption::Create => todo!(),
             MetaOption::MatchResult(_, id) => {
@@ -209,11 +213,14 @@ impl FileManagerApp {
         Ok(())
     }
 
-    fn add_meta_option(ui: &mut Ui, option: &MetaOption) {
-        let _ = ui.button("+");
+    fn add_meta_option(&mut self, ui: &mut Ui, option_index: usize) {
+        if ui.button("+").clicked() {
+            self.meta_handle_confirm(option_index).unwrap(); // TODO: Improve error handling.
+        }
+
+        let option = &self.meta_options[option_index];
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-
             match option {
                 MetaOption::Create => {
                     ui.label("Create New");
@@ -250,6 +257,22 @@ impl App for FileManagerApp {
         if self.meta_window_open {
             self.meta_window(ctx);
         }
+
+        TopBottomPanel::top(eframe::egui::Id::new("top_panel")).show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                let people = ui
+                    .button("People")
+                    .on_hover_text("Add or Remove People (Hotkey: 1)");
+                if people.clicked() {
+                    self.open_meta_window();
+                }
+
+                // TODO: Add more meta types.
+                let _ = ui
+                    .button("Events")
+                    .on_hover_text("Add or Remove People (Hotkey: 1)");
+            });
+        });
 
         CentralPanel::default().show(ctx, |ui| {
             StripBuilder::new(ui)
