@@ -1,17 +1,20 @@
+mod logic;
+mod visual;
+
 use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use crate::{images::ImageCache, Result};
 
 use approximate_string_matcher::{compare, MatchResult};
-use eframe::egui::{Layout, RichText, TextEdit, TopBottomPanel, Window};
+use eframe::egui::{Layout, RichText, TextEdit, Window};
 use eframe::epaint::Color32;
 use eframe::Frame;
 use eframe::{
-    egui::{vec2, CentralPanel, Context, Image, Key, Ui},
+    egui::{vec2, Context, Image, Key, Ui},
     App,
 };
-use egui_extras::{Column, Size, StripBuilder, TableBuilder};
+use egui_extras::{Column, TableBuilder};
 use meta::model::{PersonId, RootFolderId};
 use meta::Repository;
 
@@ -239,41 +242,6 @@ impl FileManagerApp {
             ui.label(letter);
         }
     }
-
-    fn top_panel(&mut self, ui: &mut Ui) {
-        ui.horizontal_centered(|ui| {
-            let people = ui
-                .button("People")
-                .on_hover_text("Add or Remove People (Hotkey: 1)");
-            if people.clicked() {
-                self.open_meta_window();
-            }
-
-            // TODO: Add more meta types.
-            let _ = ui
-                .button("Events")
-                .on_hover_text("Add or Remove People (Hotkey: 1)");
-        });
-    }
-
-    fn bottom_panel(&mut self, ui: &mut Ui) {
-        ui.vertical_centered_justified(|ui| {
-            let root_path = self
-                .meta
-                .root_folders()
-                .root_folder(&self.meta_current_folder);
-            let file_name = self
-                .images
-                .current_image_path()
-                .map_or("No File".into(), |path| {
-                    root_path.map_or_else(
-                        || path.to_string_lossy(),
-                        |root_path| path.strip_prefix(root_path).unwrap().to_string_lossy(),
-                    )
-                });
-            ui.label(file_name);
-        });
-    }
 }
 
 impl App for FileManagerApp {
@@ -287,21 +255,7 @@ impl App for FileManagerApp {
             self.meta_window(ctx);
         }
 
-        TopBottomPanel::top(eframe::egui::Id::new("top_panel")).show(ctx, |ui| {
-            self.top_panel(ui);
-        });
-
-        TopBottomPanel::bottom(eframe::egui::Id::new("bottom_panel")).show(ctx, |ui| {
-            self.bottom_panel(ui);
-        });
-
-        CentralPanel::default().show(ctx, |ui| {
-            StripBuilder::new(ui)
-                .size(Size::remainder())
-                .vertical(|mut strip| {
-                    strip.cell(|ui| self.add_image(ctx, ui));
-                });
-        });
+        self.update_visual(ctx);
     }
 
     fn on_close_event(&mut self) -> bool {
