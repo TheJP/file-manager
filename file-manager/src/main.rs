@@ -19,9 +19,10 @@ fn main() {
 }
 
 fn file_manager(arguments: &Arguments) -> Result<()> {
-    let images = images::find(&arguments.folder)?;
+    let folder_path = &arguments.folder.canonicalize()?;
+    let images = images::find(folder_path)?;
     let mut meta = meta::Repository::load_or_create(".meta/".into())?;
-    let meta_current_folder = meta.root_folders_mut().get_or_create(&arguments.folder)?;
+    let meta_current_folder = meta.root_folders_mut().get_or_create(folder_path)?;
 
     let app = Box::new(gui::FileManagerApp::new(images, meta, meta_current_folder));
     eframe::run_native(
