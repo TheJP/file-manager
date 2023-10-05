@@ -4,12 +4,17 @@ mod arguments;
 mod gui;
 mod images;
 
-use arguments::Arguments;
-use clap::Parser;
+use std::path::{Path, PathBuf};
 
+use arguments::Arguments;
+
+use clap::Parser;
+use directories::ProjectDirs;
 use eframe::egui::Style;
 use rayon::ThreadPoolBuildError;
 use thiserror::Error;
+
+const REPOSITORY_PATH: &str = ".meta";
 
 fn main() {
     let arguments = Arguments::parse();
@@ -21,7 +26,7 @@ fn main() {
 fn file_manager(arguments: &Arguments) -> Result<()> {
     let folder_path = &arguments.folder.canonicalize()?;
     let images = images::find(folder_path)?;
-    let mut meta = meta::Repository::load_or_create(".meta/".into())?;
+    let mut meta = meta::Repository::load_or_create(meta_path())?;
     let meta_current_folder = meta.root_folders_mut().get_or_create(folder_path)?;
 
     let app = Box::new(gui::FileManagerApp::new(images, meta, meta_current_folder));
@@ -35,6 +40,15 @@ fn file_manager(arguments: &Arguments) -> Result<()> {
     )?;
 
     Ok(())
+}
+
+fn meta_path() -> PathBuf {
+    let dirs = ProjectDirs::from("net", "JP", "JP File Manager");
+    if let Some(dirs) = dirs.filter(|_| !cfg!(debug_assertions)) {
+        dirs.config_local_dir().to_owned()
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(REPOSITORY_PATH)
+    }
 }
 
 fn apply_style(creation_context: &eframe::CreationContext<'_>) {
