@@ -161,11 +161,11 @@ mod tests {
 
     #[test]
     fn compare_simple_edge_cases() {
-        assert!(matches!(compare("", ""), None));
-        assert!(matches!(compare("abc", ""), None));
-        assert!(matches!(compare("", "abc"), None));
-        assert!(matches!(compare("", "abc"), None));
-        assert!(matches!(compare("abcd", "abc"), None));
+        assert!(compare("", "").is_none());
+        assert!(compare("abc", "").is_none());
+        assert!(compare("", "abc").is_none());
+        assert!(compare("", "abc").is_none());
+        assert!(compare("abcd", "abc").is_none());
     }
 
     #[test]
@@ -197,16 +197,16 @@ mod tests {
 
     #[test]
     fn compare_no_match() {
-        assert!(matches!(compare("nonsense", "something else"), None));
-        assert!(matches!(compare("commit", "comm nonesense"), None));
-        assert!(matches!(compare("commit", "comm nonesense t"), None));
-        assert!(matches!(compare("commit", "short"), None));
+        assert!(compare("nonsense", "something else").is_none());
+        assert!(compare("commit", "comm nonesense").is_none());
+        assert!(compare("commit", "comm nonesense t").is_none());
+        assert!(compare("commit", "short").is_none());
     }
 
     #[test]
     fn compare_case_insensitive() {
-        assert!(!matches!(compare("commIT", "COMMit"), None));
-        assert!(!matches!(compare("COMMit", "com MIT"), None));
+        assert!(compare("commIT", "COMMit").is_some());
+        assert!(compare("COMMit", "com MIT").is_some());
     }
 
     #[test]
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn compare_matches_unicode() {
         let result = compare("💚💚", "some💚 some💚");
-        assert!(!matches!(result, None));
+        assert!(result.is_some());
         assert_eq!(&[4, 10], result.unwrap().matches());
     }
 }
